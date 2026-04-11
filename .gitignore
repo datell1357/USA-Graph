@@ -1,0 +1,33 @@
+# --- Root ---
+.env
+.env.local
+.env.*.local
+.vscode/
+*.log
+*.jpg
+*.png
+*.webp
+
+# --- Go Server ---
+server/server
+server/*.exe
+server/usa-graph
+server/usa_graph.db
+server/usa_graph.db-journal
+server/usa_graph.db-shm
+server/usa_graph.db-wal
+server/vendor/
+server/tmp/
+
+# --- React Client ---
+client/node_modules/
+client/dist/
+client/dist-ssr/
+client/*.local
+client/.DS_Store
+client/.eslintcache
+
+# --- IDEs & OS ---
+.idea/
+.DS_Store
+Thumbs.db
