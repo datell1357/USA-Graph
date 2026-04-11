@@ -7,6 +7,11 @@
 *.jpg
 *.png
 *.webp
+GEMINI.md
+TroubleShoot.md
+RUNNING.md
+ARCHITECTURE.md
+Score Standard.md
 
 # --- Go Server ---
 server/server
