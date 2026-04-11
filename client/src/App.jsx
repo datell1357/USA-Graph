@@ -14,8 +14,9 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
     const fetchData = () => {
-      axios.get('http://localhost:8080/api/status')
+      axios.get(`${apiBase}/api/status`)
         .then(res => {
           setData(res.data);
           if (res.data.metrics_json) {

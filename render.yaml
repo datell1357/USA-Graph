@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: usa-graph-backend
+    env: go
+    buildCommand: cd server && go build -o main main.go
+    startCommand: cd server && ./main
+    envVars:
+      - key: GIN_MODE
+        value: release
+      - key: FRED_API_KEY
+        sync: false
+      - key: DB_PATH
+        value: ./usa_graph.db

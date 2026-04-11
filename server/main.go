@@ -25,8 +25,12 @@ func main() {
 		log.Println(".env file not found, using system environment variables")
 	}
 
-	// DB 초기화
-	db, err := gorm.Open(sqlite.Open("usa_graph.db"), &gorm.Config{})
+	// DB 초기화 (Render 배포 시 Disk 볼륨 경로 "/var/lib/usa-graph/usa_graph.db" 등을 위해 유연화)
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "usa_graph.db"
+	}
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
 		log.Fatal("failed to connect database:", err)
 	}
@@ -69,8 +73,15 @@ func main() {
 
 	// CORS 설정
 	r.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		// 배포 시 보안을 위해 특정 도메인(예: https://usa-liquidity-dashboard.netlify.app)만 허용하는 것이 좋음
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*") 
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
 		c.Next()
 	})
 
