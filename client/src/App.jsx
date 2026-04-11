@@ -92,8 +92,8 @@ function App() {
           </div>
         </div>
 
-        <div className="summary-center" style={{ flex: '1', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-          <div className="summary-label">종합 유동성 점수 (11개 지표)</div>
+        <div className="summary-center">
+          <div className="summary-label">종합 유동성 점수</div>
           <div className="summary-main">
             <div className="status-sphere" style={{ backgroundColor: getRegimeColor(), boxShadow: `0 0 20px ${getRegimeColor()}` }}></div>
             <h1 className="status-text">
@@ -107,10 +107,16 @@ function App() {
           </div>
         </div>
 
-        <div className="summary-right" style={{ flex: '0 0 auto', textAlign: 'right', display: 'flex', alignItems: 'center' }}>
-          <div className="timestamp" style={{ fontSize: '1.2rem', fontWeight: '500' }}>
+        <div className="summary-right desktop-only">
+          <div className="timestamp">
             {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </div>
+        </div>
+      </div>
+
+      <div className="clock-bar mobile-only">
+        <div className="timestamp">
+          {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
         </div>
       </div>
 

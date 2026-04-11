@@ -148,9 +148,9 @@ body {
   .metrics-grid {
     grid-template-columns: repeat(2, 1fr) !important;
     gap: 0.8rem !important;
-    width: 100% !important; /* 너비를 다시 100%로 복구하여 글자 가독성 확보 */
+    width: 100% !important;
     margin: 0 auto !important;
-    padding-bottom: 5rem; /* 하단 여유 공간 확보 */
+    padding-bottom: 5rem;
   }
   .card-title {
     font-size: 1rem;
@@ -158,6 +158,49 @@ body {
   .card-subtitle {
     font-size: 0.7rem;
   }
+  
+  /* 모바일 전용 시계 바 */
+  .clock-bar.mobile-only {
+    display: flex;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    padding: 0.4rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border-color);
+  }
+  .clock-bar.mobile-only .timestamp {
+    font-size: 0.9rem !important;
+    color: var(--text-secondary);
+  }
+  
+  /* 범례 줄바꿈 방지 */
+  .legend-item {
+    white-space: nowrap !important;
+  }
+}
+
+.desktop-only {
+  display: flex;
+}
+.mobile-only {
+  display: none;
+}
+
+@media (max-aspect-ratio: 1/1) {
+  .desktop-only { display: none !important; }
+  .mobile-only { display: flex !important; }
+  
+  .summary-left { flex: 0 0 auto !important; margin-right: 1.2rem; }
+  .summary-center { 
+    flex: 1; 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    text-align: center;
+    justify-content: center;
+  }
+  .summary-right { display: none !important; }
 }
 
 /* 나머지 내부 요소 스타일들 */
