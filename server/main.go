@@ -85,6 +85,16 @@ func main() {
 		c.Next()
 	})
 
+	// CORS 설정 ... (생략)
+	
+	// Root 핸들러 (UptimeRobot 또는 브라우저 직접 접속용)
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "USA Liquidity Dashboard API is running",
+			"docs":    "https://github.com/datell1357/USA-Graph",
+		})
+	})
+
 	// Health Check 엔드포인트
 	r.GET("/api/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
