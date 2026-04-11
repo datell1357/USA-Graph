@@ -97,11 +97,11 @@ body {
 /* ============================================================ */
 @media (max-aspect-ratio: 1/1) {
   body {
-    overflow: hidden; /* 세로형에선 스크롤 방지 */
+    overflow-y: auto; /* 세로형에서도 스크롤 허용 */
   }
   .dashboard-container {
     padding: 0.8rem;
-    height: 100vh;
+    min-height: 100vh; /* 높이 고정 대신 최소 높이 설정 */
   }
   .summary-header {
     width: 95% !important;
@@ -139,14 +139,18 @@ body {
     margin-bottom: 1rem !important;
   }
   .status-text {
-    font-size: 1rem !important; /* 요약 텍스트 밀림 방지 */
+    font-size: 0.9rem !important; /* 요약 텍스트 밀림 방지 */
+  }
+  .summary-main {
+    flex-wrap: wrap; /* 좁은 화면에서 줄바꿈 허용 */
+    gap: 0.4rem !important;
   }
   .metrics-grid {
     grid-template-columns: repeat(2, 1fr) !important;
     gap: 0.8rem !important;
-    width: 80% !important; /* 카드들의 가로 전체 길이를 -20% 축소 */
-    margin: 0 auto !important; /* 화면 중앙 정렬로 양옆 비움 */
-    padding-bottom: 3rem;
+    width: 100% !important; /* 너비를 다시 100%로 복구하여 글자 가독성 확보 */
+    margin: 0 auto !important;
+    padding-bottom: 5rem; /* 하단 여유 공간 확보 */
   }
   .card-title {
     font-size: 1rem;
