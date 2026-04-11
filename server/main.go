@@ -85,6 +85,14 @@ func main() {
 		c.Next()
 	})
 
+	// Health Check 엔드포인트
+	r.GET("/api/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status": "ok",
+			"time":   time.Now().Format(time.RFC3339),
+		})
+	})
+
 	r.GET("/api/status", func(c *gin.Context) {
 		var result domain.ScoreResult
 		db.Order("calculated_at desc").First(&result)
