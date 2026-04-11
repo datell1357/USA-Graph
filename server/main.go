@@ -70,6 +70,8 @@ func main() {
 
 	// Gin 서버 설정
 	r := gin.Default()
+	r.HandleMethodNotAllowed = true // 메서드 허용되지 않은 경우 처리 보강
+	r.ForwardedByClientIP = true    // 프록시 IP 전달 허용
 
 	// CORS 설정
 	r.Use(func(c *gin.Context) {
@@ -88,11 +90,9 @@ func main() {
 	// CORS 설정 ... (생략)
 	
 	// Root 핸들러 (UptimeRobot 또는 브라우저 직접 접속용)
-	r.GET("/", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "USA Liquidity Dashboard API is running",
-			"docs":    "https://github.com/datell1357/USA-Graph",
-		})
+	// GET 뿐만 아니라 HEAD 요청도 200 OK를 반환하도록 명시
+	r.Match([]string{"GET", "HEAD"}, "/", func(c *gin.Context) {
+		c.String(http.StatusOK, "USA-Graph API is Live")
 	})
 
 	// Health Check 엔드포인트
