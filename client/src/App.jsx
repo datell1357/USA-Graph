@@ -15,6 +15,8 @@ function App() {
 
   useEffect(() => {
     const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+    console.log("USA-Graph: Fetching from", apiBase);
+    
     const fetchData = () => {
       axios.get(`${apiBase}/api/status`)
         .then(res => {
