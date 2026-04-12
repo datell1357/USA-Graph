@@ -7,6 +7,7 @@ function App() {
   const [data, setData] = useState(null);
   const [metrics, setMetrics] = useState({});
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -18,12 +19,13 @@ function App() {
     console.log("USA-Graph: Fetching from", apiBase);
     
     const fetchData = () => {
+      if (loading) return; // 중복 요청 방지 가드
+      setLoading(true);
       axios.get(`${apiBase}/api/status`)
         .then(res => {
           setData(res.data);
           if (res.data.metrics_json) {
             try {
-              // metrics_json이 이미 객체일 수도 있고 문자열일 수도 있으므로 안전하게 처리
               const parsed = typeof res.data.metrics_json === 'string' 
                 ? JSON.parse(res.data.metrics_json) 
                 : res.data.metrics_json;
@@ -36,6 +38,9 @@ function App() {
         })
         .catch(err => {
           console.error("Error fetching status:", err);
+        })
+        .finally(() => {
+          setLoading(false);
         });
     };
 

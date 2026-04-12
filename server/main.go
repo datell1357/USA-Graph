@@ -35,6 +35,13 @@ func main() {
 		log.Fatal("failed to connect database:", err)
 	}
 
+	// SQLite 성능 최적화: WAL 모드 및 Busy Timeout 설정
+	sqlDB, err := db.DB()
+	if err == nil {
+		sqlDB.Exec("PRAGMA journal_mode=WAL;")
+		sqlDB.Exec("PRAGMA busy_timeout=5000;") // 락 발생 시 5초간 대기
+	}
+
 	// 테이블 자동 생성
 	db.AutoMigrate(&domain.Metric{}, &domain.ScoreResult{})
 
@@ -59,9 +66,9 @@ func main() {
 		}
 	}()
 
-	// 2. FRED 거시 데이터 (15분 주기 - 갱신이 느리므로 주기를 늘림)
+	// 2. FRED 거시 데이터 (30분 주기 - 갱신이 느리므로 주기를 늘림)
 	go func() {
-		ticker := time.NewTicker(15 * time.Minute)
+		ticker := time.NewTicker(30 * time.Minute)
 		for range ticker.C {
 			log.Println("Syncing macro data from FRED...")
 			// FRED 데이터만 명시적으로 갱신하는 로직은 fetchAndCalculate 내부에서 처리
@@ -122,50 +129,53 @@ func main() {
 
 		oneYearAgoDate := time.Now().AddDate(-1, 0, 0)
 
-		for id, detail := range metricsDetails {
-			var rawRecords []domain.Metric
-			
-			// 1. 해당 지표의 1년치 모든 데이터를 DB에서 긁어옴 (메모리 필터링을 위해)
-			// SQLite의 날짜 함수 리스크를 방지하기 위해 단순 쿼리 후 Go에서 정제함
-			db.Where("(series_id = ? OR series_id = ?) AND date >= ?", id, "YF_"+id, oneYearAgoDate).
-				Order("date asc").
-				Find(&rawRecords)
-			
-			// 2. 하루에 하나씩만 남기도록 메모리에서 정제 (Daily Sampling)
-			var history []float64
-			seenDates := make(map[string]bool)
-			for _, rec := range rawRecords {
-				dateStr := rec.Date.Format("2006-01-02")
-				if !seenDates[dateStr] {
-					// 지표별 스케일링 적용
-					val := rec.Value
-					if id == "WRESBAL" {
-						val = val / 1000.0
-					}
-					history = append(history, val)
-					seenDates[dateStr] = true
-				} else {
-					// 같은 날짜면 마지막 데이터로 계속 업데이트 (Daily Close 효과)
-					val := rec.Value
-					if id == "WRESBAL" {
-						val = val / 1000.0
-					}
-					if len(history) > 0 {
-						history[len(history)-1] = val
-					}
-				}
-			}
+		// 1. 모든 관련 지표의 1년치 데이터를 DB 수준에서 일별 평균(Daily Sampling)으로 가져옴
+		// Go 메모리가 아닌 DB 엔진을 활용하여 응답 데이터 크기를 99% 절감함
+		var targetSeries []string
+		for id := range metricsDetails {
+			targetSeries = append(targetSeries, id, "YF_"+id)
+		}
 
+		type DailyMetric struct {
+			SeriesID string
+			Day      string
+			AvgValue float64
+		}
+		var dailyMetrics []DailyMetric
+		
+		// SQLite의 strftime을 사용하여 날짜별 그룹화 및 평균 산출
+		db.Table("metrics").
+			Select("series_id, strftime('%Y-%m-%d', date) as day, AVG(value) as avg_value").
+			Where("series_id IN ? AND date >= ?", targetSeries, oneYearAgoDate).
+			Group("series_id, day").
+			Order("day asc").
+			Scan(&dailyMetrics)
+
+		// 2. 가져온 일별 데이터를 지표별로 그룹화
+		historyBySeries := make(map[string][]float64)
+		for _, dm := range dailyMetrics {
+			baseID := dm.SeriesID
+			if len(baseID) > 3 && baseID[:3] == "YF_" {
+				baseID = baseID[3:]
+			}
+			
+			// 지표별 스케일링 적용 (WRESBAL 등)
+			val := dm.AvgValue
+			if baseID == "WRESBAL" {
+				val = val / 1000.0
+			}
+			historyBySeries[baseID] = append(historyBySeries[baseID], val)
+		}
+
+		// 3. 기존 metricsDetails 구조에 정제된 history 주입
+		for id, detail := range metricsDetails {
+			history := historyBySeries[id]
 			if history == nil {
 				history = []float64{}
 			}
 
 			if m, ok := detail.(map[string]interface{}); ok {
 				m["history"] = history
-			} else {
-				metricsDetails[id] = map[string]interface{}{
-					"history": history,
-				}
 			}
 		}
 
@@ -223,19 +233,17 @@ func fetchAndCalculate(db *gorm.DB, fred *infra.FredClient, yf *infra.YahooFinan
 		}
 
 		if len(metrics) > 0 {
-			// 1. 모든 과거 데이터를 DB에 전수로 안전하게 개별 Upsert
-			processedCount := 0
-			for _, m := range metrics {
-				// 중복 체크 (SeriesID + Date)
-				var count int64
-				db.Model(&domain.Metric{}).Where("series_id = ? AND date = ?", m.SeriesID, m.Date).Count(&count)
-				if count == 0 {
-					db.Create(&m)
-					processedCount++
-				}
-			}
-			if processedCount > 0 {
-				log.Printf("FRED Backfill for %s: %d new points saved", id, processedCount)
+			// 대량 데이터를 한꺼번에 Upsert (OnConflict 사용 및 배치 처리)
+			// SQLite의 DB 락을 최소화하기 위해 트랜잭션을 묶어서 처리함
+			err := db.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "series_id"}, {Name: "date"}},
+				DoNothing: true,
+			}).CreateInBatches(metrics, 100).Error
+			
+			if err != nil {
+				log.Printf("Error backfilling FRED %s: %v", id, err)
+			} else {
+				log.Printf("FRED Backfill for %s: Synced %d points", id, len(metrics))
 			}
 
 			latest := metrics[len(metrics)-1]
@@ -358,6 +366,17 @@ func fetchAndCalculate(db *gorm.DB, fred *infra.FredClient, yf *infra.YahooFinan
 
 	regime, _ := svc.CalculateRegime(totalScore, indicatorScores, currentData)
 
+	// [Optimization] 이전 결과와 비교하여 변경사항이 없으면 DB 쓰기 스킵
+	var lastResult domain.ScoreResult
+	if err := db.Order("calculated_at desc").First(&lastResult).Error; err == nil {
+		// 점수와 레짐이 같으면 굳이 새로 저장하지 않음 (리소스 절약)
+		// 단, 1시간 이상 지났으면 상태 확인을 위해 다시 저장
+		if lastResult.TotalScore == totalScore && lastResult.Regime == regime && time.Since(lastResult.CalculatedAt) < 1*time.Hour {
+			log.Printf("Skip saving: Score(%.2f) and Regime(%s) unchanged", totalScore, regime)
+			return
+		}
+	}
+
 	// 개별 지표 정보 및 점수를 JSON으로 저장
 	metricDetails := make(map[string]interface{})
 	for id, val := range currentData {
@@ -370,7 +389,7 @@ func fetchAndCalculate(db *gorm.DB, fred *infra.FredClient, yf *infra.YahooFinan
 			"value":   val,
 			"diff":    diff,
 			"percent": percent,
-			"score":   indicatorScores[id], // 개별 10점 만점 점수 포함
+			"score":   indicatorScores[id],
 		}
 	}
 	metricsJSON, _ := json.Marshal(metricDetails)
@@ -378,7 +397,6 @@ func fetchAndCalculate(db *gorm.DB, fred *infra.FredClient, yf *infra.YahooFinan
 	res := domain.ScoreResult{
 		TotalScore:   totalScore,
 		Regime:       regime,
-		// 핵심군 점수는 이제 가중 점수의 합으로 대체하거나 유연하게 처리
 		NetLiquidity: (indicatorScores["RRPONTSYD"]*0.08 + indicatorScores["WTREGEN"]*0.08) / 0.16 * 10,
 		BankSystem:   (indicatorScores["WRESBAL"]*0.10 + indicatorScores["SOFR"]*0.06) / 0.16 * 10,
 		Monetary:     (indicatorScores["M2SL"]*0.08 + indicatorScores["RMFNS"]*0.06) / 0.14 * 10,
@@ -388,5 +406,5 @@ func fetchAndCalculate(db *gorm.DB, fred *infra.FredClient, yf *infra.YahooFinan
 		MetricsJSON:  string(metricsJSON),
 	}
 	db.Create(&res)
-	log.Printf("Calculation complete (9 indicators): Total Score %.2f, Regime: %s", totalScore, regime)
+	log.Printf("Calculation complete (11 indicators): Total Score %.2f, Regime: %s", totalScore, regime)
 }

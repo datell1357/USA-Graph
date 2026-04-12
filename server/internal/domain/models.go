@@ -5,9 +5,9 @@ import "time"
 // Metric 지표 데이터를 저장하기 위한 도메인 모델
 type Metric struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
-	SeriesID  string    `gorm:"index" json:"series_id"` // FRED Series ID (예: WALCL, RRPONTSYD)
+	SeriesID  string    `gorm:"index:idx_series_id_date" json:"series_id"` // FRED Series ID
 	Value     float64   `json:"value"`
-	Date      time.Time `gorm:"index" json:"date"`
+	Date      time.Time `gorm:"index:idx_series_id_date" json:"date"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
