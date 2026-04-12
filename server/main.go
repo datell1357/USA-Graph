@@ -283,7 +283,12 @@ func fetchAndCalculate(db *gorm.DB, fred *infra.FredClient, yf *infra.YahooFinan
 			for i := range hist {
 				hist[i].SeriesID = "YF_" + appID
 			}
-			db.Clauses(clause.OnConflict{DoNothing: true}).Create(&hist)
+
+			// 최적화된 배치 Upsert 적용
+			db.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "series_id"}, {Name: "date"}},
+				DoNothing: true,
+			}).CreateInBatches(hist, 100)
 			
 			// 최신 가격 및 이전 가격 추출
 			latest := hist[len(hist)-1]
@@ -323,7 +328,12 @@ func fetchAndCalculate(db *gorm.DB, fred *infra.FredClient, yf *infra.YahooFinan
 				CreatedAt: time.Now(),
 			})
 		}
-		db.Clauses(clause.OnConflict{DoNothing: true}).Create(&fgMetrics)
+		
+		// CNN 데이터도 동일하게 안전한 배치 Upsert 적용
+		db.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "series_id"}, {Name: "date"}},
+			DoNothing: true,
+		}).CreateInBatches(fgMetrics, 100)
 		
 		// 만약 실시간 API가 실패했다면 히스토리에서 보완
 		if _, ok := currentData["FEAR_GREED"]; !ok {
