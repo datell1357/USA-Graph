@@ -42,8 +42,24 @@ func main() {
 		sqlDB.Exec("PRAGMA busy_timeout=5000;") // 락 발생 시 5초간 대기
 	}
 
-	// 테이블 자동 생성
+	// 3. 모델 마이그레이션 및 인덱스 정리
+	// 기존 일반 인덱스 삭제 (유니크 인덱스와 충돌 방지)
+	db.Exec("DROP INDEX IF EXISTS idx_series_id_date")
+	
+	// 중요: 중복 데이터 자동 정리 로직 (유니크 제약 조건 생성 전 필수)
+	// (series_id, date)가 같은 데이터 중 id가 가장 큰 것만 남기고 삭제
+	db.Exec(`DELETE FROM metrics 
+	         WHERE id NOT IN (
+	             SELECT MAX(id) 
+	             FROM metrics 
+	             GROUP BY series_id, date
+	         )`)
+
+	// 마이그레이션 실행
 	db.AutoMigrate(&domain.Metric{}, &domain.ScoreResult{})
+	
+	// 유니크 인덱스 수동 생성 시도 (AutoMigrate가 실패할 경우를 대비)
+	db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_metric_series_date ON metrics(series_id, date)")
 
 	// 클라이언트 및 서비스 초기화
 	fredKey := os.Getenv("FRED_API_KEY")
