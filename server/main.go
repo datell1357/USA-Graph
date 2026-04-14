@@ -112,6 +112,27 @@ func main() {
 		c.Next()
 	})
 
+	// [New] AI 에이전트 전용 전용 API 경로 (JSON 전용) - 홈페이지 핸들러보다 위에 배치하여 우선권 확보
+	r.GET("/api/data.json", func(c *gin.Context) {
+		var result domain.ScoreResult
+		if err := db.Order("calculated_at desc").First(&result).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "No data available"})
+			return
+		}
+
+		var metricsDetails map[string]interface{}
+		json.Unmarshal([]byte(result.MetricsJSON), &metricsDetails)
+
+		c.JSON(http.StatusOK, gin.H{
+			"summary": gin.H{
+				"score":         result.TotalScore,
+				"regime":        result.Regime,
+				"calculated_at": result.CalculatedAt,
+			},
+			"indicators": metricsDetails,
+		})
+	})
+
 	// Root 핸들러: index.html 서빙 시 실시간 데이터 Meta Tag 주입 (AI 에이전트 크롤링 지원)
 	r.GET("/", func(c *gin.Context) {
 		var result domain.ScoreResult
@@ -170,27 +191,6 @@ func main() {
 
 		c.Header("Content-Type", "text/html; charset=utf-8")
 		c.String(http.StatusOK, html)
-	})
-
-	// [New] AI 에이전트 전용 전용 API 경로 (JSON 전용)
-	r.GET("/api/data.json", func(c *gin.Context) {
-		var result domain.ScoreResult
-		if err := db.Order("calculated_at desc").First(&result).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "No data available"})
-			return
-		}
-
-		var metricsDetails map[string]interface{}
-		json.Unmarshal([]byte(result.MetricsJSON), &metricsDetails)
-
-		c.JSON(http.StatusOK, gin.H{
-			"summary": gin.H{
-				"score":         result.TotalScore,
-				"regime":        result.Regime,
-				"calculated_at": result.CalculatedAt,
-			},
-			"indicators": metricsDetails,
-		})
 	})
 
 	// Health Check 엔드포인트
