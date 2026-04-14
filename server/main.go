@@ -45,7 +45,7 @@ func main() {
 	}
 
 	// 3. 모델 마이그레이션 실행 (테이블 생성 보장 후 데이터 정리 진행)
-	db.AutoMigrate(&domain.Metric{}, &domain.ScoreResult{})
+	db.AutoMigrate(&domain.Metric{}, &domain.ScoreResult{}, &domain.AiReport{})
 
 	// 중요: 기존 일반 인덱스 삭제 및 중복 데이터 청소
 	db.Exec("DROP INDEX IF EXISTS idx_series_id_date")
@@ -154,8 +154,23 @@ func main() {
 			})
 		})
 
+		// 기능 확장: AI 요약 보고서 엔드포인트
+		api.GET("/report", func(c *gin.Context) {
+			report, err := app.FetchOrGenerateAiReport(db)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch or generate report: " + err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"cached_content": report.Content,
+				"total_score":    report.TotalScore,
+				"regime":         report.Regime,
+				"created_at":     report.CreatedAt,
+			})
+		})
+
 		// 지표 상세 데이터 (기존 대시보드 연동용)
-		api.GET("/status", func(c *gin.Context) {
+		api.GET("/status", func(c *gin.Context) {	
 			handleApiStatus(c, db) 
 		})
 

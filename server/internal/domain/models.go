@@ -33,3 +33,13 @@ type FactorWeights struct {
 	RiskAppetiteWeights map[string]float64
 	DollarGlobalWeights map[string]float64
 }
+
+// AiReport AI 프롬프트 생성 결과 및 캐싱용 모델
+type AiReport struct {
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	TotalScore   float64   `json:"total_score"`
+	Regime       string    `json:"regime"`
+	Content      string    `json:"content"` 
+	MetricsJSON  string    `json:"metrics_json"` // 캐싱 룰 판독을 위해 리포트 생성 당시 지표 스냅샷 저장
+	CreatedAt    time.Time `gorm:"index" json:"created_at"`
+}

@@ -9,11 +9,31 @@ function App() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [aiReport, setAiReport] = useState(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (isModalOpen && !aiReport && !isAiLoading) {
+      const apiBase = import.meta.env.VITE_API_BASE_URL || '';
+      setIsAiLoading(true);
+      axios.get(`${apiBase}/api/report`)
+        .then(res => {
+          setAiReport(res.data.cached_content);
+        })
+        .catch(err => {
+          console.error("AI Report fetch failed:", err);
+          setAiReport("보고서 데이터를 가져오는 데 실패했습니다.");
+        })
+        .finally(() => {
+          setIsAiLoading(false);
+        });
+    }
+  }, [isModalOpen]);
 
   useEffect(() => {
     const apiBase = import.meta.env.VITE_API_BASE_URL || '';
@@ -170,35 +190,33 @@ function App() {
               </div>
               <button className="modal-close" onClick={() => setIsModalOpen(false)}>&times;</button>
             </div>
-            <div className="modal-body">
-              <div className="ai-report-section">
-                <h4>현재 레짐 분석</h4>
-                <div className="ai-report-text">
-                  현재 시장 유동성 점수는 <strong>{Math.round(data?.total_score || 0)}점</strong>으로 
-                  <strong> '{data?.regime}'</strong> 상태입니다. 지표상으로는 유동성 공급이 안정적이나, 
-                  시장 심리는 여전히 보수적인 관망세를 유지하고 있습니다.
-                </div>
-              </div>
-              
-              <div className="ai-report-section">
-                <h4>핵심 리스크 및 기회</h4>
-                <div className="ai-report-text">
-                  역레포(RRP) 잔고의 감소가 시장 유동성 방어에 기여하고 있으나, 
-                  장단기 금리차의 동향을 통해 향후 경기 방향성을 면밀히 모니터링해야 합니다. 
-                  하이일드 스프레드 안정은 기업 금융 환경에 긍정적입니다.
-                </div>
+            <div className="modal-body" style={{ minHeight: '200px' }}>
+              <div style={{ paddingBottom: '1rem', borderBottom: '1px solid var(--border-color)', marginBottom: '1.5rem' }}>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>대시보드 실시간 점수 동기화</span><br/>
+                <strong style={{ fontSize: '1.2rem', color: getRegimeColor() }}>{Math.round(data?.total_score || 0)}점 ({data?.regime})</strong>
               </div>
 
-              <div className="ai-report-section">
-                <h4>투자 전략 가이드</h4>
-                <div className="ai-report-text">
-                  급격한 방향성 베팅보다는 우량주 중심의 분할 접근이 유리한 구간입니다. 
-                  공포 탐욕 지수가 중립 이상으로 회복될 때 추가적인 상승 탄력을 기대할 수 있습니다.
+              {isAiLoading ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '150px', color: 'var(--text-secondary)' }}>
+                  <div className="spinner" style={{ marginBottom: '1rem', width: '30px', height: '30px', border: '3px solid var(--border-color)', borderTopColor: 'var(--accent-orange)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                  <div>AI 요약 보고서를 생성 중입니다...</div>
                 </div>
-              </div>
+              ) : (
+                <div className="ai-report-text" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.8' }}>
+                  {aiReport ? aiReport.split('\n').map((line, i) => {
+                    if (line.startsWith('###')) return <h4 key={i} style={{ color: 'var(--accent-orange)', marginTop: '1.5rem', marginBottom: '0.5rem' }}>{line.replace(/^#+\s*/, '')}</h4>;
+                    if (line.startsWith('**') && line.endsWith('**')) return <strong key={i} style={{ display: 'block', marginTop: '1rem' }}>{line.replace(/\*\*/g, '')}</strong>;
+                    if (line.trim() === '') return <br key={i} />;
+                    // 간단한 볼드 처리
+                    const formattedLine = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                    return <div key={i} dangerouslySetInnerHTML={{ __html: formattedLine }} />;
+                  }) : '보고서 데이터가 없습니다.'}
+                </div>
+              )}
 
-              <div style={{ marginTop: '2rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              <div style={{ marginTop: '2.5rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                 * 본 보고서는 11개 경제 지표를 기반으로 자동 생성되었습니다.
+                <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
               </div>
             </div>
           </div>
