@@ -219,6 +219,14 @@ func main() {
 		c.String(http.StatusOK, html)
 	})
 
+	// 포트 및 서버 실행 설정 복구
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	r.Run(":" + port)
+}
+
 func handleApiStatus(c *gin.Context, db *gorm.DB) {
 	var result domain.ScoreResult
 	if err := db.Order("calculated_at desc").First(&result).Error; err != nil {
