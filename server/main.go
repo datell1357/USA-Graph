@@ -112,28 +112,54 @@ func main() {
 		c.Next()
 	})
 
-	// [New] AI 에이전트 전용 전용 API 경로 (JSON 전용) - 홈페이지 핸들러보다 위에 배치하여 우선권 확보
-	r.GET("/api/data.json", func(c *gin.Context) {
-		var result domain.ScoreResult
-		if err := db.Order("calculated_at desc").First(&result).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "No data available"})
-			return
-		}
+	// --- 라우팅 설정 (중요: 순서가 중요함) ---
+	
+	// 1. API 그룹 설정 (JSON 전용 통로) - 루트 핸들러와 명확히 분리
+	api := r.Group("/api")
+	{
+		// [New] AI 에이전트 전용 전용 API 경로 (JSON 전용)
+		api.GET("/data.json", func(c *gin.Context) {
+			var result domain.ScoreResult
+			if err := db.Order("calculated_at desc").First(&result).Error; err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "No data available"})
+				return
+			}
 
-		var metricsDetails map[string]interface{}
-		json.Unmarshal([]byte(result.MetricsJSON), &metricsDetails)
+			var metricsDetails map[string]interface{}
+			json.Unmarshal([]byte(result.MetricsJSON), &metricsDetails)
 
-		c.JSON(http.StatusOK, gin.H{
-			"summary": gin.H{
-				"score":         result.TotalScore,
-				"regime":        result.Regime,
-				"calculated_at": result.CalculatedAt,
-			},
-			"indicators": metricsDetails,
+			c.JSON(http.StatusOK, gin.H{
+				"summary": gin.H{
+					"score":         result.TotalScore,
+					"regime":        result.Regime,
+					"calculated_at": result.CalculatedAt,
+				},
+				"indicators": metricsDetails,
+			})
 		})
-	})
 
-	// Root 핸들러: index.html 서빙 시 실시간 데이터 Meta Tag 주입 (AI 에이전트 크롤링 지원)
+		// Health Check 엔드포인트
+		api.GET("/health", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"status": "ok",
+				"time":   time.Now().Format(time.RFC3339),
+			})
+		})
+
+		// 지표 상세 데이터 엔드포인트
+		api.GET("/status", func(c *gin.Context) {
+			handleApiStatus(c, db) 
+		})
+
+		// 원본 지표 목록 엔드포인트
+		api.GET("/metrics", func(c *gin.Context) {
+			var metrics []domain.Metric
+			db.Order("date desc").Limit(100).Find(&metrics)
+			c.JSON(http.StatusOK, metrics)
+		})
+	}
+
+	// 2. Root 핸들러: index.html 서빙 시 실시간 데이터 Meta Tag 주입 (정확히 "/" 만 처리)
 	r.GET("/", func(c *gin.Context) {
 		var result domain.ScoreResult
 		db.Order("calculated_at desc").First(&result)
@@ -193,109 +219,88 @@ func main() {
 		c.String(http.StatusOK, html)
 	})
 
-	// Health Check 엔드포인트
-	r.GET("/api/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status": "ok",
-			"time":   time.Now().Format(time.RFC3339),
-		})
-	})
-
-	r.GET("/api/status", func(c *gin.Context) {
-		var result domain.ScoreResult
-		db.Order("calculated_at desc").First(&result)
-		
-		position := "보수적 관망"
-		if result.Regime == "긴축" {
-			position = "방어적 포지션"
-		} else if result.Regime == "완화" {
-			position = "공격적 포지션"
-		}
-
-		var metricsDetails map[string]interface{}
-		if err := json.Unmarshal([]byte(result.MetricsJSON), &metricsDetails); err != nil {
-			log.Printf("Error unmarshaling metrics_json: %v", err)
-			metricsDetails = make(map[string]interface{})
-		}
-
-		oneYearAgoDate := time.Now().AddDate(-1, 0, 0)
-
-		// 1. 모든 관련 지표의 1년치 데이터를 DB 수준에서 일별 평균(Daily Sampling)으로 가져옴
-		// Go 메모리가 아닌 DB 엔진을 활용하여 응답 데이터 크기를 99% 절감함
-		var targetSeries []string
-		for id := range metricsDetails {
-			targetSeries = append(targetSeries, id, "YF_"+id)
-		}
-
-		type DailyMetric struct {
-			SeriesID string
-			Day      string
-			AvgValue float64
-		}
-		var dailyMetrics []DailyMetric
-		
-		// SQLite의 strftime을 사용하여 날짜별 그룹화 및 평균 산출
-		db.Table("metrics").
-			Select("series_id, strftime('%Y-%m-%d', date) as day, AVG(value) as avg_value").
-			Where("series_id IN ? AND date >= ?", targetSeries, oneYearAgoDate).
-			Group("series_id, day").
-			Order("day asc").
-			Scan(&dailyMetrics)
-
-		// 2. 가져온 일별 데이터를 지표별로 그룹화
-		historyBySeries := make(map[string][]float64)
-		for _, dm := range dailyMetrics {
-			baseID := dm.SeriesID
-			if len(baseID) > 3 && baseID[:3] == "YF_" {
-				baseID = baseID[3:]
-			}
-			
-			// 지표별 히스토리 데이터 스케일링 (표시 단위 기준)
-			val := dm.AvgValue
-			if baseID == "WRESBAL" {
-				val = val / 1000000.0 // Million -> Trillion
-			} else if baseID == "WTREGEN" {
-				val = val / 1000.0    // Million -> Billion
-			} else if baseID == "M2SL" {
-				val = val / 1000.0    // Billion -> Trillion
-			}
-			historyBySeries[baseID] = append(historyBySeries[baseID], val)
-		}
-
-		// 3. 기존 metricsDetails 구조에 정제된 history 주입
-		for id, detail := range metricsDetails {
-			history := historyBySeries[id]
-			if history == nil {
-				history = []float64{}
-			}
-
-			if m, ok := detail.(map[string]interface{}); ok {
-				m["history"] = history
-			}
-		}
-
-		updatedMetricsJSON, _ := json.Marshal(metricsDetails)
-
-		c.JSON(http.StatusOK, gin.H{
-			"total_score":   result.TotalScore,
-			"regime":        result.Regime,
-			"position":      position,
-			"calculated_at": result.CalculatedAt,
-			"metrics_json":  string(updatedMetricsJSON),
-		})
-	})
-
-	r.GET("/api/metrics", func(c *gin.Context) {
-		var metrics []domain.Metric
-		db.Order("date desc").Limit(100).Find(&metrics)
-		c.JSON(http.StatusOK, metrics)
-	})
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+func handleApiStatus(c *gin.Context, db *gorm.DB) {
+	var result domain.ScoreResult
+	if err := db.Order("calculated_at desc").First(&result).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No score data found"})
+		return
 	}
-	r.Run(":" + port)
+	
+	position := "보수적 관망"
+	if result.Regime == "긴축" {
+		position = "방어적 포지션"
+	} else if result.Regime == "완화" {
+		position = "공격적 포지션"
+	}
+
+	var metricsDetails map[string]interface{}
+	if err := json.Unmarshal([]byte(result.MetricsJSON), &metricsDetails); err != nil {
+		log.Printf("Error unmarshaling metrics_json: %v", err)
+		metricsDetails = make(map[string]interface{})
+	}
+
+	oneYearAgoDate := time.Now().AddDate(-1, 0, 0)
+
+	// 1. 모든 관련 지표의 1년치 데이터 샘플링 수집
+	var targetSeries []string
+	for id := range metricsDetails {
+		targetSeries = append(targetSeries, id, "YF_"+id)
+	}
+
+	type DailyMetric struct {
+		SeriesID string
+		Day      string
+		AvgValue float64
+	}
+	var dailyMetrics []DailyMetric
+	
+	db.Table("metrics").
+		Select("series_id, strftime('%Y-%m-%d', date) as day, AVG(value) as avg_value").
+		Where("series_id IN ? AND date >= ?", targetSeries, oneYearAgoDate).
+		Group("series_id, day").
+		Order("day asc").
+		Scan(&dailyMetrics)
+
+	// 2. 가중 지표별 히스토리 데이터 구성
+	historyBySeries := make(map[string][]float64)
+	for _, dm := range dailyMetrics {
+		baseID := dm.SeriesID
+		if len(baseID) > 3 && baseID[:3] == "YF_" {
+			baseID = baseID[3:]
+		}
+		
+		val := dm.AvgValue
+		if baseID == "WRESBAL" {
+			val = val / 1000000.0 // T
+		} else if baseID == "WTREGEN" {
+			val = val / 1000.0    // B
+		} else if baseID == "M2SL" {
+			val = val / 1000.0    // T
+		}
+		historyBySeries[baseID] = append(historyBySeries[baseID], val)
+	}
+
+	// 3. 응답용 JSON 구성
+	for id, detail := range metricsDetails {
+		history := historyBySeries[id]
+		if history == nil {
+			history = []float64{}
+		}
+
+		if m, ok := detail.(map[string]interface{}); ok {
+			m["history"] = history
+		}
+	}
+
+	updatedMetricsJSON, _ := json.Marshal(metricsDetails)
+
+	c.JSON(http.StatusOK, gin.H{
+		"total_score":   result.TotalScore,
+		"regime":        result.Regime,
+		"position":      position,
+		"calculated_at": result.CalculatedAt,
+		"metrics_json":  string(updatedMetricsJSON),
+	})
 }
 
 func fetchAndCalculate(db *gorm.DB, fred *infra.FredClient, yf *infra.YahooFinanceClient, cnn *infra.CnnClient, svc *app.ScoringService) {
