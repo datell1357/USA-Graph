@@ -146,7 +146,7 @@ func callPerplexityAPI(currentScore domain.ScoreResult) (string, error) {
 어투는 논리적이고 객관적인 한국어로 작성할 것. JSON 수치 데이터 자체를 나열하기보단 그 '의미'를 해석하는 데 집중할 것.`, currentScore.TotalScore, currentScore.Regime, currentScore.MetricsJSON)
 
 	payload := map[string]interface{}{
-		"model": "llama-3.1-sonar-small-128k-online", // Perplexity 최신 스탠다드 모델
+		"model": "sonar", // Perplexity 최신 표준 모델명으로 업데이트
 		"messages": []map[string]string{
 			{"role": "system", "content": "You are a professional financial analyst producing precise economic reports in Korean."},
 			{"role": "user", "content": promptText},
@@ -157,6 +157,7 @@ func callPerplexityAPI(currentScore domain.ScoreResult) (string, error) {
 	jsonPayload, _ := json.Marshal(payload)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
 	if err != nil {
+		fmt.Printf("Error creating request: %v\n", err)
 		return "", err
 	}
 
@@ -166,12 +167,14 @@ func callPerplexityAPI(currentScore domain.ScoreResult) (string, error) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		fmt.Printf("Network error calling Perplexity: %v\n", err)
 		return "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
+		fmt.Printf("Perplexity API error (Status %d): %s\n", resp.StatusCode, string(bodyBytes))
 		return "", fmt.Errorf("perplexity API failed with status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
