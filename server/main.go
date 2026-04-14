@@ -42,24 +42,24 @@ func main() {
 		sqlDB.Exec("PRAGMA busy_timeout=5000;") // 락 발생 시 5초간 대기
 	}
 
-	// 3. 모델 마이그레이션 및 인덱스 정리
-	// 기존 일반 인덱스 삭제 (유니크 인덱스와 충돌 방지)
+	// 3. 모델 마이그레이션 실행 (테이블 생성 보장 후 데이터 정리 진행)
+	db.AutoMigrate(&domain.Metric{}, &domain.ScoreResult{})
+
+	// 중요: 기존 일반 인덱스 삭제 및 중복 데이터 청소
 	db.Exec("DROP INDEX IF EXISTS idx_series_id_date")
-	
-	// 중요: 중복 데이터 자동 정리 로직 (유니크 제약 조건 생성 전 필수)
-	// (series_id, date)가 같은 데이터 중 id가 가장 큰 것만 남기고 삭제
 	db.Exec(`DELETE FROM metrics 
 	         WHERE id NOT IN (
 	             SELECT MAX(id) 
 	             FROM metrics 
 	             GROUP BY series_id, date
 	         )`)
-
-	// 마이그레이션 실행
-	db.AutoMigrate(&domain.Metric{}, &domain.ScoreResult{})
 	
-	// 유니크 인덱스 수동 생성 시도 (AutoMigrate가 실패할 경우를 대비)
+	// 유니크 인덱스 강제 생성 시도
 	db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_metric_series_date ON metrics(series_id, date)")
+
+	// [New] 단위 체계 변경에 따른 기존 캐시 강제 삭제
+	// 배포 직후 최신 T/B 단위 데이터를 생성하기 위해 한시적으로 실행
+	db.Exec("DELETE FROM score_results")
 
 	// 클라이언트 및 서비스 초기화
 	fredKey := os.Getenv("FRED_API_KEY")
@@ -410,19 +410,20 @@ func fetchAndCalculate(db *gorm.DB, fred *infra.FredClient, yf *infra.YahooFinan
 	// 개별 지표 정보 및 점수를 JSON으로 저장
 	metricDetails := make(map[string]interface{})
 	for id, val := range currentData {
-		// 중요: 점수 계산용 원본값이 아닌 표시용 가공값(displayVal)을 별도로 생성
+		// 중요: 원본 맵을 수정하지 않고 연산을 수행하기 위해 별도 변수 할당
 		displayVal := val
 		displayPrev := prevData[id]
 
 		// 수치 표시를 위한 단위 스케일링 (T, B 단위 최적화)
+		// WRESBAL(Million -> Trillion), WTREGEN(Million -> Billion), M2SL(Billion -> Trillion)
 		if id == "WRESBAL" {
-			displayVal /= 1000000.0 // Million -> Trillion (3.11T)
+			displayVal /= 1000000.0 // ex: 3.11T
 			displayPrev /= 1000000.0
 		} else if id == "WTREGEN" {
-			displayVal /= 1000.0    // Million -> Billion (748.37B)
+			displayVal /= 1000.0    // ex: 748.37B
 			displayPrev /= 1000.0
 		} else if id == "M2SL" {
-			displayVal /= 1000.0    // Billion -> Trillion (22.67T)
+			displayVal /= 1000.0    // ex: 22.67T
 			displayPrev /= 1000.0
 		}
 
