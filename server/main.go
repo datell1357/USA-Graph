@@ -268,23 +268,13 @@ func fetchAndCalculate(db *gorm.DB, fred *infra.FredClient, yf *infra.YahooFinan
 
 			latest := metrics[len(metrics)-1]
 			
-			// 지표별 스케일링 (계산용)
-			val := latest.Value
-			if id == "WRESBAL" {
-				val = val / 1000.0
-			}
-			
-			currentData[id] = val
+			currentData[id] = latest.Value
 			
 			// 비교 대상을 직전 데이터로 설정 (이미 수집된 metrics 배열 활용)
 			if len(metrics) > 1 {
-				prevVal := metrics[len(metrics)-2].Value
-				if id == "WRESBAL" {
-					prevVal = prevVal / 1000.0
-				}
-				prevData[id] = prevVal
+				prevData[id] = metrics[len(metrics)-2].Value
 			} else {
-				prevData[id] = val
+				prevData[id] = latest.Value
 			}
 		}
 	}
