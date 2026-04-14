@@ -175,10 +175,12 @@ func main() {
 				baseID = baseID[3:]
 			}
 			
-			// 지표별 스케일링 적용 (WRESBAL 등)
+			// 지표별 스케일링 적용 (WRESBAL: T 단위, WTREGEN: B 단위)
 			val := dm.AvgValue
 			if baseID == "WRESBAL" {
-				val = val / 1000.0
+				val = val / 1000000.0 // Million -> Trillion
+			} else if baseID == "WTREGEN" {
+				val = val / 1000.0    // Million -> Billion
 			}
 			historyBySeries[baseID] = append(historyBySeries[baseID], val)
 		}
@@ -406,6 +408,19 @@ func fetchAndCalculate(db *gorm.DB, fred *infra.FredClient, yf *infra.YahooFinan
 	// 개별 지표 정보 및 점수를 JSON으로 저장
 	metricDetails := make(map[string]interface{})
 	for id, val := range currentData {
+		// 가공 전 원본값 보관 (비율 계산용)
+		rawVal := val
+		rawPrev := prevData[id]
+
+		// 수치 표시를 위한 스케일링 적용
+		if id == "WRESBAL" {
+			val = val / 1000000.0
+			prevData[id] = prevData[id] / 1000000.0
+		} else if id == "WTREGEN" {
+			val = val / 1000.0
+			prevData[id] = prevData[id] / 1000.0
+		}
+
 		diff := val - prevData[id]
 		percent := 0.0
 		if prevData[id] != 0 {

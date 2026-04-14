@@ -58,7 +58,11 @@ function App() {
   const getVal = (id) => {
     const val = metrics[id]?.value;
     if (val === undefined || val === null) return '--';
-    return val.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    // 소수점이 있는 지표들을 위해 2자리까지 표시 (maximumFractionDigits 적용)
+    return val.toLocaleString(undefined, { 
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2 
+    });
   };
   
   const getWresbalVal = () => {
@@ -71,7 +75,11 @@ function App() {
     const diff = m.diff;
     const percent = m.percent?.toFixed(2) || "0.00";
     
-    let diffStr = Math.abs(diff).toLocaleString(undefined, { maximumFractionDigits: 2 });
+    // 증감 수치도 소수점 2자리까지 정확히 표시
+    let diffStr = Math.abs(diff).toLocaleString(undefined, { 
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2 
+    });
     return `${diffStr}${unit} (${percent}%)`;
   };
 
