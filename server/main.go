@@ -222,6 +222,19 @@ func main() {
 
 			html = strings.Replace(html, "<!--{{METAS}}-->", metas, 1)
 			html = strings.Replace(html, "<!--{{JSON_LD}}-->", jsonLd, 1)
+
+			// AI 전용 데이터 주입: 전체 JSON 데이터를 스크립트 태그로 포함
+			fullJson, _ := json.Marshal(gin.H{
+				"summary": gin.H{
+					"score":         result.TotalScore,
+					"regime":        result.Regime,
+					"calculated_at": result.CalculatedAt,
+				},
+				"indicators": result.MetricsJSON, // 이미 JSON 문자열임
+			})
+			dataScript := fmt.Sprintf(`
+    <script id="ai-indicator-data" type="application/json">%s</script>`, string(fullJson))
+			html = strings.Replace(html, "<!--{{JSON_DATA}}-->", dataScript, 1)
 		}
 
 		c.Header("Content-Type", "text/html; charset=utf-8")
