@@ -175,12 +175,14 @@ func main() {
 				baseID = baseID[3:]
 			}
 			
-			// 지표별 스케일링 적용 (WRESBAL: T 단위, WTREGEN: B 단위)
+			// 지표별 히스토리 데이터 스케일링 (표시 단위 기준)
 			val := dm.AvgValue
 			if baseID == "WRESBAL" {
 				val = val / 1000000.0 // Million -> Trillion
 			} else if baseID == "WTREGEN" {
 				val = val / 1000.0    // Million -> Billion
+			} else if baseID == "M2SL" {
+				val = val / 1000.0    // Billion -> Trillion
 			}
 			historyBySeries[baseID] = append(historyBySeries[baseID], val)
 		}
@@ -408,26 +410,30 @@ func fetchAndCalculate(db *gorm.DB, fred *infra.FredClient, yf *infra.YahooFinan
 	// 개별 지표 정보 및 점수를 JSON으로 저장
 	metricDetails := make(map[string]interface{})
 	for id, val := range currentData {
-		// 가공 전 원본값 보관 (비율 계산용)
-		rawVal := val
-		rawPrev := prevData[id]
+		// 중요: 점수 계산용 원본값이 아닌 표시용 가공값(displayVal)을 별도로 생성
+		displayVal := val
+		displayPrev := prevData[id]
 
-		// 수치 표시를 위한 스케일링 적용
+		// 수치 표시를 위한 단위 스케일링 (T, B 단위 최적화)
 		if id == "WRESBAL" {
-			val = val / 1000000.0
-			prevData[id] = prevData[id] / 1000000.0
+			displayVal /= 1000000.0 // Million -> Trillion (3.11T)
+			displayPrev /= 1000000.0
 		} else if id == "WTREGEN" {
-			val = val / 1000.0
-			prevData[id] = prevData[id] / 1000.0
+			displayVal /= 1000.0    // Million -> Billion (748.37B)
+			displayPrev /= 1000.0
+		} else if id == "M2SL" {
+			displayVal /= 1000.0    // Billion -> Trillion (22.67T)
+			displayPrev /= 1000.0
 		}
 
-		diff := val - prevData[id]
+		diff := displayVal - displayPrev
 		percent := 0.0
-		if prevData[id] != 0 {
-			percent = (diff / math.Abs(prevData[id])) * 100
+		if displayPrev != 0 {
+			percent = (diff / math.Abs(displayPrev)) * 100
 		}
+		
 		metricDetails[id] = map[string]interface{}{
-			"value":   val,
+			"value":   displayVal,
 			"diff":    diff,
 			"percent": percent,
 			"score":   indicatorScores[id],
