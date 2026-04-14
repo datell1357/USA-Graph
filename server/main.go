@@ -113,38 +113,45 @@ func main() {
 		c.Next()
 	})
 
-	// CORS 설정 ... (생략)
-	
 	// Root 핸들러: index.html 서빙 시 실시간 데이터 Meta Tag 주입 (AI 에이전트 크롤링 지원)
 	r.GET("/", func(c *gin.Context) {
 		var result domain.ScoreResult
-		if err := db.Order("calculated_at desc").First(&result).Error; err != nil {
-			c.File("../client/dist/index.html")
+		db.Order("calculated_at desc").First(&result)
+
+		// index.html 위치 찾기 (dist 먼저, 없으면 루트 client)
+		paths := []string{"../client/dist/index.html", "../client/index.html", "./client/dist/index.html", "./client/index.html"}
+		var htmlPath string
+		for _, p := range paths {
+			if _, err := os.Stat(p); err == nil {
+				htmlPath = p
+				break
+			}
+		}
+
+		if htmlPath == "" {
+			c.String(http.StatusInternalServerError, "Failed to locate dashboard template")
 			return
 		}
 
-		// index.html 읽기
-		htmlFile, err := os.Open("../client/dist/index.html")
+		htmlBytes, err := os.ReadFile(htmlPath)
 		if err != nil {
-			c.String(http.StatusInternalServerError, "Failed to load dashboard")
+			c.String(http.StatusInternalServerError, "Failed to read dashboard template")
 			return
 		}
-		defer htmlFile.Close()
-
-		htmlBytes, _ := io.ReadAll(htmlFile)
+		
 		html := string(htmlBytes)
 
-		// Meta Tag 주입 데이타 준비
-		title := fmt.Sprintf("미국 유동성 대시보드 - %s (%.0f점)", result.Regime, result.TotalScore)
-		description := fmt.Sprintf("현재 미국 시장 유동성 상태는 %s입니다. (종합 점수: %.2f점, 11개 지표 기반 분석 결과)", result.Regime, result.TotalScore)
-		metas := fmt.Sprintf(`
+		// 데이터가 있는 경우에만 치환 진행
+		if result.ID != 0 {
+			description := fmt.Sprintf("현재 미국 시장 유동성 상태는 %s입니다. (종합 점수: %.2f점, 11개 지표 기반 분석 결과)", result.Regime, result.TotalScore)
+			
+			metas := fmt.Sprintf(`
     <meta name="description" content="%s" />
-    <meta property="og:title" content="%s" />
+    <meta property="og:title" content="미국 유동성 대시보드" />
     <meta property="og:description" content="%s" />
-    <meta name="robots" content="index, follow" />`, description, title, description)
+    <meta name="robots" content="index, follow" />`, description, description)
 
-		// JSON-LD 주입 (Perplexity 등 AI 에이전트 가독성 극대화)
-		jsonLd := fmt.Sprintf(`
+			jsonLd := fmt.Sprintf(`
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -157,10 +164,10 @@ func main() {
     }
     </script>`, description, result.TotalScore, result.Regime)
 
-		// 플레이스홀더 치환
-		html = strings.Replace(html, "{{TITLE}}", title, 1)
-		html = strings.Replace(html, "{{METAS}}", metas, 1)
-		html = strings.Replace(html, "{{JSON_LD}}", jsonLd, 1)
+			// 주석 플레이스홀더 치환 (타이틀 제외)
+			html = strings.Replace(html, "<!--{{METAS}}-->", metas, 1)
+			html = strings.Replace(html, "<!--{{JSON_LD}}-->", jsonLd, 1)
+		}
 
 		c.Header("Content-Type", "text/html; charset=utf-8")
 		c.String(http.StatusOK, html)
@@ -317,8 +324,15 @@ func fetchAndCalculate(db *gorm.DB, fred *infra.FredClient, yf *infra.YahooFinan
 		// FRED 시리즈 수집 (1년치)
 		metrics, err := fred.FetchObservations(id, oneYearAgo)
 		if err != nil {
-			log.Printf("Error fetching FRED %s: %v", id, err)
-			continue
+			log.Printf("Error fetching FRED %s: %v. Using DB fallback...", id, err)
+			// [Fallback] API 호출 실패 시 DB에서 마지막 데이터라도 가져와서 계산 유지
+			var lastMetric domain.Metric
+			if dbErr := db.Where("series_id = ?", id).Order("date desc").First(&lastMetric).Error; dbErr == nil {
+				metrics = []domain.Metric{lastMetric}
+				log.Printf("Fallback successful: Use DB value for %s from %s", id, lastMetric.Date.Format("2006-01-02"))
+			} else {
+				continue // DB에도 없으면 건너뜀
+			}
 		}
 
 		if len(metrics) > 0 {
