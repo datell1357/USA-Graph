@@ -232,7 +232,7 @@ func main() {
 	// Render 배포 시 dist 폴더가 root 기준 ./client/dist 에 위치할 수 있음
 	r.Static("/assets", "../client/dist/assets")
 	r.StaticFile("/favicon.svg", "../client/dist/favicon.svg")
-	
+	r.StaticFile("/robots.txt", "../client/dist/robots.txt")
 	// 그 외 정의되지 않은 모든 경로는 index.html로 (SPA 지원)
 	r.NoRoute(func(c *gin.Context) {
 		c.File("../client/dist/index.html")
