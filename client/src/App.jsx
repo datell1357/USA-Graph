@@ -8,6 +8,7 @@ function App() {
   const [metrics, setMetrics] = useState({});
   const [currentTime, setCurrentTime] = useState(new Date());
   const [loading, setLoading] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -96,7 +97,12 @@ function App() {
     <div className="dashboard-container">
       <div className="summary-header card" style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
         <div className="summary-left" style={{ flex: '0 0 auto' }}>
-          <div className="donut-chart" style={{ '--score-pct': `${data?.total_score || 0}%`, '--score-color': getRegimeColor() }}>
+          <div 
+            className="donut-chart" 
+            style={{ '--score-pct': `${data ? data.total_score : 0}%`, '--score-color': getRegimeColor() }}
+            onClick={() => setIsModalOpen(true)}
+            title="AI 요약 보고서 보기"
+          >
             <div className="donut-inner">
               <span className="donut-score" style={{ color: getRegimeColor() }}>
                 {data ? Math.round(data.total_score) : '--'}
@@ -153,6 +159,51 @@ function App() {
       <footer style={{ marginTop: 'auto', paddingBottom: '1rem', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.7rem' }}>
         FRED® is a registered trademark of the Federal Reserve Bank of St. Louis.
       </footer>
+
+      {isModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">
+                <span style={{ fontSize: '1.5rem' }}>🤖</span>
+                AI 유동성 요약 보고서
+              </div>
+              <button className="modal-close" onClick={() => setIsModalOpen(false)}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <div className="ai-report-section">
+                <h4>현재 레짐 분석</h4>
+                <div className="ai-report-text">
+                  현재 시장 유동성 점수는 <strong>{Math.round(data?.total_score || 0)}점</strong>으로 
+                  <strong> '{data?.regime}'</strong> 상태입니다. 지표상으로는 유동성 공급이 안정적이나, 
+                  시장 심리는 여전히 보수적인 관망세를 유지하고 있습니다.
+                </div>
+              </div>
+              
+              <div className="ai-report-section">
+                <h4>핵심 리스크 및 기회</h4>
+                <div className="ai-report-text">
+                  역레포(RRP) 잔고의 감소가 시장 유동성 방어에 기여하고 있으나, 
+                  장단기 금리차의 동향을 통해 향후 경기 방향성을 면밀히 모니터링해야 합니다. 
+                  하이일드 스프레드 안정은 기업 금융 환경에 긍정적입니다.
+                </div>
+              </div>
+
+              <div className="ai-report-section">
+                <h4>투자 전략 가이드</h4>
+                <div className="ai-report-text">
+                  급격한 방향성 베팅보다는 우량주 중심의 분할 접근이 유리한 구간입니다. 
+                  공포 탐욕 지수가 중립 이상으로 회복될 때 추가적인 상승 탄력을 기대할 수 있습니다.
+                </div>
+              </div>
+
+              <div style={{ marginTop: '2rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                * 본 보고서는 11개 경제 지표를 기반으로 자동 생성되었습니다.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

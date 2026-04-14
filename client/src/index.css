@@ -249,3 +249,103 @@ body {
 .unit-text { font-size: 0.9rem; font-weight: 400; color: #8b949e; margin-left: 1px; }
 .change-group { display: flex; align-items: center; gap: 0.2rem; font-size: 0.85rem; font-weight: 600; }
 .trend-arrow { font-size: 0.7rem; }
+
+/* AI 요약 보고서 모달 스타일 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-content {
+  background: linear-gradient(145deg, #161b22, #0d1117);
+  border: 1px solid var(--border-active);
+  border-radius: 24px;
+  width: 100%;
+  max-width: 600px;
+  max-height: 85vh;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.9) translateY(20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.modal-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.modal-close:hover { color: var(--text-primary); }
+
+.modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  line-height: 1.6;
+}
+
+.ai-report-section {
+  margin-bottom: 1.5rem;
+}
+
+.ai-report-section:last-child { margin-bottom: 0; }
+
+.ai-report-section h4 {
+  color: var(--accent-orange);
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+
+.ai-report-text {
+  color: #c9d1d9;
+  font-size: 0.95rem;
+}
+
+.donut-chart {
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.donut-chart:hover {
+  transform: scale(1.08);
+}
+
+.donut-chart:active {
+  transform: scale(0.95);
+}
