@@ -202,14 +202,26 @@ function App() {
                   <div>AI 요약 보고서를 생성 중입니다...</div>
                 </div>
               ) : (
-                <div className="ai-report-text" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.8' }}>
+                <div className="ai-report-text" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.9', fontSize: '1.02rem', color: '#e6edf3' }}>
                   {aiReport ? aiReport.split('\n').map((line, i) => {
-                    if (line.startsWith('###')) return <h4 key={i} style={{ color: 'var(--accent-orange)', marginTop: '1.5rem', marginBottom: '0.5rem' }}>{line.replace(/^#+\s*/, '')}</h4>;
-                    if (line.startsWith('**') && line.endsWith('**')) return <strong key={i} style={{ display: 'block', marginTop: '1rem' }}>{line.replace(/\*\*/g, '')}</strong>;
-                    if (line.trim() === '') return <br key={i} />;
-                    // 간단한 볼드 처리
-                    const formattedLine = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-                    return <div key={i} dangerouslySetInnerHTML={{ __html: formattedLine }} />;
+                    const trimmedLine = line.trim();
+                    if (trimmedLine === '') return <div key={i} style={{ height: '0.8rem' }} />;
+                    
+                    // [대괄호] 형태의 소제목 자동 감지 및 하이라이트
+                    if (trimmedLine.startsWith('[') && trimmedLine.includes(']')) {
+                      return <h4 key={i} style={{ color: 'var(--accent-orange)', marginTop: '1.8rem', marginBottom: '0.6rem', borderLeft: '3px solid var(--accent-orange)', paddingLeft: '10px' }}>{trimmedLine.replace(/[\[\]]/g, '')}</h4>;
+                    }
+                    
+                    if (trimmedLine.startsWith('###')) return <h4 key={i} style={{ color: 'var(--accent-orange)', marginTop: '1.5rem', marginBottom: '0.5rem' }}>{trimmedLine.replace(/^#+\s*/, '')}</h4>;
+                    
+                    // 리스트(블렛) 스타일링
+                    if (trimmedLine.startsWith('-') || trimmedLine.startsWith('•')) {
+                      return <div key={i} style={{ paddingLeft: '1.2rem', marginBottom: '0.4rem', textIndent: '-1.2rem' }}>• {trimmedLine.replace(/^[-•]\s*/, '')}</div>;
+                    }
+
+                    // 볼드 처리 및 렌더링
+                    const formattedLine = trimmedLine.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #fff">$1</strong>');
+                    return <div key={i} style={{ marginBottom: '0.4rem' }} dangerouslySetInnerHTML={{ __html: formattedLine }} />;
                   }) : '보고서 데이터가 없습니다.'}
                 </div>
               )}

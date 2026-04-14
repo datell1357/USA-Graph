@@ -130,20 +130,23 @@ func callPerplexityAPI(currentScore domain.ScoreResult) (string, error) {
 
 	url := "https://api.perplexity.ai/chat/completions"
 
-	promptText := fmt.Sprintf(`너는 미국 경제 전문가야. 현재 주어진 지표 데이터를 바탕으로 미국 주식 유동성 대시보드 분석 보고서를 작성해줘.
+	promptText := fmt.Sprintf(`너는 미국 경제 및 유동성 분석 전문가야. 현재 대시보드의 지표 데이터를 바탕으로 투자자가 이해하기 쉽게 '유동성 브리핑'을 작성해줘.
 
 현재 총점: %.2f점
 현재 레짐: %s
 지표 현황 (JSON): %s
 
-반드시 포함할 내용 (마크다운 형식 준수):
-1. 현재 레짐 판정
-2. 핵심 지표별 분석 (RRP 잔고, 금리차, VIX, Fear&Greed 중심)
-3. 긍정적 기여 지표와 부정적 기여 지표
-4. 향후 1~4주 전망 및 미국 주식 투자 전략 가이드
-5. 마지막 문장은 "현재 시장을 한 문장으로 요약: [문장]" 형식으로 끝내기
+**작성 가이드라인 (반드시 준수):**
+1. **각주 및 출처 금지**: [1], [2], [3]과 같은 출처 표시를 절대 하지 마세요.
+2. **부드러운 말투**: 너무 딱딱한 보고서 체보다는 "~입니다", "~보여요"와 같이 신뢰감 있으면서도 친절한 말투를 사용하세요.
+3. **가독성 중심**: 문장을 길게 나열하기보다 핵심 위주로 문단을 나누고 블렛 포인트를 적절히 섞어주세요.
+4. **구성**:
+   - [현재 상황 요약]: 지금 점수가 가지는 의미를 한 줄로.
+   - [주요 지표 체크]: 긍정적인 지표와 주의할 지표를 2~3개 골라 쉽게 설명.
+   - [투자 대응 전략]: 지금 어떤 포지션을 취하면 좋을지 구체적인 가이드.
+5. **마무리**: "오늘의 유동성 한 줄 평: [내용]"으로 끝내주세요.
 
-어투는 논리적이고 객관적인 한국어로 작성할 것. JSON 수치 데이터 자체를 나열하기보단 그 '의미'를 해석하는 데 집중할 것.`, currentScore.TotalScore, currentScore.Regime, currentScore.MetricsJSON)
+어투는 논리적이지만 친절하게 한국어로 작성하세요.`, currentScore.TotalScore, currentScore.Regime, currentScore.MetricsJSON)
 
 	payload := map[string]interface{}{
 		"model": "sonar", // Perplexity 최신 표준 모델명으로 업데이트
