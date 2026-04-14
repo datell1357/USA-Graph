@@ -112,12 +112,12 @@ func main() {
 		c.Next()
 	})
 
-	// --- 라우팅 설정 (중요: 순서가 중요함) ---
-	
-	// 1. API 그룹 설정 (JSON 전용 통로) - 루트 핸들러와 명확히 분리
+	// --- 라우팅 설정 (중요: 순서가 모든 것을 결정함) ---
+
+	// [1] API 전용 그룹 (JSON 통로) - 최상단에 배치하여 절대적인 우선권 부여
 	api := r.Group("/api")
 	{
-		// [New] AI 에이전트 전용 전용 API 경로 (JSON 전용)
+		// AI 전용 JSON 데이터 엔드포인트
 		api.GET("/data.json", func(c *gin.Context) {
 			var result domain.ScoreResult
 			if err := db.Order("calculated_at desc").First(&result).Error; err != nil {
@@ -138,20 +138,17 @@ func main() {
 			})
 		})
 
-		// Health Check 엔드포인트
-		api.GET("/health", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{
-				"status": "ok",
-				"time":   time.Now().Format(time.RFC3339),
-			})
-		})
-
-		// 지표 상세 데이터 엔드포인트
+		// 지표 상세 데이터 (기존 대시보드 연동용)
 		api.GET("/status", func(c *gin.Context) {
 			handleApiStatus(c, db) 
 		})
 
-		// 원본 지표 목록 엔드포인트
+		// 헬스체크 (UptimeRobot용 - GET/HEAD 모두 지원)
+		api.Match([]string{"GET", "HEAD"}, "/health", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"status": "ok", "time": time.Now().Format(time.RFC3339)})
+		})
+
+		// 원본 지표 목록
 		api.GET("/metrics", func(c *gin.Context) {
 			var metrics []domain.Metric
 			db.Order("date desc").Limit(100).Find(&metrics)
@@ -159,12 +156,11 @@ func main() {
 		})
 	}
 
-	// 2. Root 핸들러: index.html 서빙 시 실시간 데이터 Meta Tag 주입 (정확히 "/" 만 처리)
-	r.GET("/", func(c *gin.Context) {
+	// [2] Root 핸들러: 오직 "정확히 /" 경로만 HTML 주입 서빙 (HEAD 지원)
+	r.Match([]string{"GET", "HEAD"}, "/", func(c *gin.Context) {
 		var result domain.ScoreResult
 		db.Order("calculated_at desc").First(&result)
 
-		// index.html 위치 찾기 (dist 먼저, 없으면 루트 client)
 		paths := []string{"../client/dist/index.html", "../client/index.html", "./client/dist/index.html", "./client/index.html"}
 		var htmlPath string
 		for _, p := range paths {
@@ -187,10 +183,8 @@ func main() {
 		
 		html := string(htmlBytes)
 
-		// 데이터가 있는 경우에만 치환 진행
 		if result.ID != 0 {
 			description := fmt.Sprintf("현재 미국 시장 유동성 상태는 %s입니다. (종합 점수: %.2f점, 11개 지표 기반 분석 결과)", result.Regime, result.TotalScore)
-			
 			metas := fmt.Sprintf(`
     <meta name="description" content="%s" />
     <meta property="og:title" content="미국 유동성 대시보드" />
@@ -210,13 +204,22 @@ func main() {
     }
     </script>`, description, result.TotalScore, result.Regime)
 
-			// 주석 플레이스홀더 치환 (타이틀 제외)
 			html = strings.Replace(html, "<!--{{METAS}}-->", metas, 1)
 			html = strings.Replace(html, "<!--{{JSON_LD}}-->", jsonLd, 1)
 		}
 
 		c.Header("Content-Type", "text/html; charset=utf-8")
 		c.String(http.StatusOK, html)
+	})
+
+	// [3] 정적 파일 서빙 (나머지 경로들)
+	// Render 배포 시 dist 폴더가 root 기준 ./client/dist 에 위치할 수 있음
+	r.Static("/assets", "../client/dist/assets")
+	r.StaticFile("/favicon.svg", "../client/dist/favicon.svg")
+	
+	// 그 외 정의되지 않은 모든 경로는 index.html로 (SPA 지원)
+	r.NoRoute(func(c *gin.Context) {
+		c.File("../client/dist/index.html")
 	})
 
 	// 포트 및 서버 실행 설정 복구
