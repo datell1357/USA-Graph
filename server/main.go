@@ -2,10 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"math"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -112,10 +115,76 @@ func main() {
 
 	// CORS 설정 ... (생략)
 	
-	// Root 핸들러 (UptimeRobot 또는 브라우저 직접 접속용)
-	// GET 뿐만 아니라 HEAD 요청도 200 OK를 반환하도록 명시
-	r.Match([]string{"GET", "HEAD"}, "/", func(c *gin.Context) {
-		c.String(http.StatusOK, "USA-Graph API is Live")
+	// Root 핸들러: index.html 서빙 시 실시간 데이터 Meta Tag 주입 (AI 에이전트 크롤링 지원)
+	r.GET("/", func(c *gin.Context) {
+		var result domain.ScoreResult
+		if err := db.Order("calculated_at desc").First(&result).Error; err != nil {
+			c.File("../client/dist/index.html")
+			return
+		}
+
+		// index.html 읽기
+		htmlFile, err := os.Open("../client/dist/index.html")
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Failed to load dashboard")
+			return
+		}
+		defer htmlFile.Close()
+
+		htmlBytes, _ := io.ReadAll(htmlFile)
+		html := string(htmlBytes)
+
+		// Meta Tag 주입 데이타 준비
+		title := fmt.Sprintf("미국 유동성 대시보드 - %s (%.0f점)", result.Regime, result.TotalScore)
+		description := fmt.Sprintf("현재 미국 시장 유동성 상태는 %s입니다. (종합 점수: %.2f점, 11개 지표 기반 분석 결과)", result.Regime, result.TotalScore)
+		metas := fmt.Sprintf(`
+    <meta name="description" content="%s" />
+    <meta property="og:title" content="%s" />
+    <meta property="og:description" content="%s" />
+    <meta name="robots" content="index, follow" />`, description, title, description)
+
+		// JSON-LD 주입 (Perplexity 등 AI 에이전트 가독성 극대화)
+		jsonLd := fmt.Sprintf(`
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Dataset",
+      "name": "USA Liquidity Index",
+      "description": "%s",
+      "variableMeasured": "Liquidity Score",
+      "value": "%.2f",
+      "interpretation": "%s"
+    }
+    </script>`, description, result.TotalScore, result.Regime)
+
+		// 플레이스홀더 치환
+		html = strings.Replace(html, "{{TITLE}}", title, 1)
+		html = strings.Replace(html, "{{METAS}}", metas, 1)
+		html = strings.Replace(html, "{{JSON_LD}}", jsonLd, 1)
+
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		c.String(http.StatusOK, html)
+	})
+
+	// [New] AI 에이전트 전용 전용 API 경로 (JSON 전용)
+	r.GET("/api/data.json", func(c *gin.Context) {
+		var result domain.ScoreResult
+		if err := db.Order("calculated_at desc").First(&result).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "No data available"})
+			return
+		}
+
+		var metricsDetails map[string]interface{}
+		json.Unmarshal([]byte(result.MetricsJSON), &metricsDetails)
+
+		c.JSON(http.StatusOK, gin.H{
+			"summary": gin.H{
+				"score":         result.TotalScore,
+				"regime":        result.Regime,
+				"calculated_at": result.CalculatedAt,
+			},
+			"indicators": metricsDetails,
+		})
 	})
 
 	// Health Check 엔드포인트
@@ -430,6 +499,14 @@ func fetchAndCalculate(db *gorm.DB, fred *infra.FredClient, yf *infra.YahooFinan
 			"score":   indicatorScores[id],
 		}
 	}
+
+	// [Validation] 11개 필수 지표가 모두 존재하는지 확인하여 데이터 정합성 보장
+	requiredCount := 11
+	if len(metricDetails) < requiredCount {
+		log.Printf("[Warning] Skipping update: Only %d/%d indicators collected", len(metricDetails), requiredCount)
+		return
+	}
+
 	metricsJSON, _ := json.Marshal(metricDetails)
 
 	res := domain.ScoreResult{
