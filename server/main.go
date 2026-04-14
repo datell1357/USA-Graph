@@ -117,8 +117,18 @@ func main() {
 	// [1] API 전용 그룹 (JSON 통로) - 최상단에 배치하여 절대적인 우선권 부여
 	api := r.Group("/api")
 	{
-		// AI 전용 JSON 데이터 엔드포인트
-		api.GET("/data.json", func(c *gin.Context) {
+		// 모든 API 요청에 대해 User-Agent 로깅 (디버깅용)
+		api.Use(func(c *gin.Context) {
+			ua := c.GetHeader("User-Agent")
+			if ua != "" {
+				fmt.Printf("[%s] API Request from: %s | Path: %s | Method: %s\n", 
+					time.Now().Format("2006/01/02 15:04:05"), ua, c.Request.URL.Path, c.Request.Method)
+			}
+			c.Next()
+		})
+
+		// AI 전용 JSON 데이터 엔드포인트 (HEAD 지원 추가)
+		api.Match([]string{"GET", "HEAD"}, "/data.json", func(c *gin.Context) {
 			var result domain.ScoreResult
 			if err := db.Order("calculated_at desc").First(&result).Error; err != nil {
 				c.JSON(http.StatusNotFound, gin.H{"error": "No data available"})
@@ -127,6 +137,12 @@ func main() {
 
 			var metricsDetails map[string]interface{}
 			json.Unmarshal([]byte(result.MetricsJSON), &metricsDetails)
+
+			// HEAD 요청일 경우 본문 없이 헤더만 반환
+			if c.Request.Method == "HEAD" {
+				c.Status(http.StatusOK)
+				return
+			}
 
 			c.JSON(http.StatusOK, gin.H{
 				"summary": gin.H{
